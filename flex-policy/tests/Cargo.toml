@@ -1,0 +1,36 @@
+# Copyright 2023 Salesforce, Inc. All rights reserved.
+[package]
+name = "test_policy"
+version = "1.0.0"
+rust-version = "1.74.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.anypoint]
+group_id = "e4573503-2793-416a-a1ad-6ec4599ae36e"
+definition_asset_id = "test-policy"
+implementation_asset_id = "test-policy-flex"
+
+[dependencies]
+pdk = { version = "1.2.0", registry = "anypoint" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+anyhow = "1.0"
+futures = "0.3.30"
+uuid = { version = "1.8.0", features = ["v4"] }
+chrono = "0.4"
+futures-util = "0.3"
+
+[dev-dependencies]
+pdk-test = { version = "1.2.0", registry = "anypoint" }
+httpmock = "0.6"
+reqwest = "0.11"
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+opt-level = 'z'
+strip = "debuginfo"
