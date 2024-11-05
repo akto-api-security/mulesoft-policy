@@ -9,6 +9,8 @@ use serde_json::json;
 use std::time::Duration;
 use std::collections::HashMap;
 use crate::generated::config::Config;
+use rand::Rng;
+use pdk::logger::info;
 
 #[derive(Clone)]
 struct ReqPayload {
@@ -62,6 +64,13 @@ async fn response_filter(
 ) {
 
     if let RequestData::Continue(req_payload) = request_data{
+
+        let sample_percentage = config.sampling_percentage.unwrap_or(100);
+        let random_value: u8 = rand::thread_rng().gen_range(1..=100);
+        if i64::from(random_value) > sample_percentage {
+            debug!("Skipping this api: {:?}", random_value);
+            return;
+        }
         let response_headers_state = state.into_headers_state().await;
         let raw_headers = response_headers_state.handler().headers();
 
