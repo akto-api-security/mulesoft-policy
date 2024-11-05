@@ -1,8 +1,0 @@
-{
-  "main": "metadata.yaml",
-  "groupId": "e4573503-2793-416a-a1ad-6ec4599ae36e",
-  "assetId": "test-policy",
-  "version": "1.0.0",
-  "name": "Test Policy",
-  "description": "This is a test policy"
-}

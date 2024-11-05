@@ -1,8 +1,0 @@
-#%Policy Definition 0.1
-name: Test Policy
-category: Custom
-providedCharacteristics: []
-description: This is a test policy
-interfaceScope:
-  - api
-  - resource

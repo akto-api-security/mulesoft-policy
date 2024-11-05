@@ -27,17 +27,30 @@ async fn process_request(state: RequestState) -> Flow<ReqPayload> {
     for (key, value) in raw_headers {
         headers_map.insert(key.to_string(), value.to_string());
     }
-    let request_headers_json = serde_json::to_string(&headers_map).unwrap_or_default();
+    let host = headers_map.get("host")
+    .or_else(|| headers_map.get(":authority"))
+    .map(|h| h.clone())
+    .unwrap_or_else(|| "".to_string());
 
+    if !headers_map.contains_key("host") {
+        if let Some(authority) = headers_map.get(":authority") {
+            headers_map.insert("host".to_string(), authority.clone());
+
+        }
+    }
+
+    let request_headers_json = serde_json::to_string(&headers_map).unwrap_or_default();
+    
     let method = headers_state.method();
     let path = headers_state.path();
     let body_state = headers_state.into_body_state().await;
     let request_body = body_state.handler().body();
     let request_payload = String::from_utf8_lossy(&request_body).to_string();
 
-    // Pass along the collected request data
+    let full_url = format!("{}{}", host, path);
+
     Flow::Continue(ReqPayload {
-        path,
+        path: full_url,
         method,
         request_headers: request_headers_json,
         request_body: request_payload,
@@ -64,7 +77,7 @@ async fn response_filter(
         let body_handler = body_state.handler();
         let body = body_handler.body();
         let response_payload = String::from_utf8_lossy(&body).to_string();
-    
+   
         // Build the data batch in the required format
         let batch_data = json!({
             "batchData": [
@@ -76,7 +89,7 @@ async fn response_filter(
                     "requestPayload": req_payload.request_body,
                     "responsePayload": response_payload,
                     "ip": "0.0.0.0",  // Placeholder IP, replace with real client IP if available
-                    "time": Utc::now().to_rfc3339(),
+                    "time": Utc::now().timestamp(),
                     "statusCode": response_status_code,
                     "type": "HTTP/1.1",
                     "status": "",
