@@ -3,9 +3,9 @@ apiVersion: gateway.mulesoft.com/v1alpha1
 kind: Extension
 metadata:
   labels:
-    title: Test Policy
+    title: Akto Mirroring Policy
     category: Custom
-    description: This is a test policy
+    description: Mirrors traffic data of your API's to Akto Instance
     metadata/interfaceScope: api,resource
 spec:
   extends:
