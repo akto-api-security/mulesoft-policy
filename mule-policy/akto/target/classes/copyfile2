@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:compression="http://www.mulesoft.org/schema/mule/compression"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:http-policy="http://www.mulesoft.org/schema/mule/http-policy"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:sockets="http://www.mulesoft.org/schema/mule/sockets"
+      xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+              http://www.mulesoft.org/schema/mule/http-policy http://www.mulesoft.org/schema/mule/http-policy/current/mule-http-policy.xsd
+              http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+              http://www.mulesoft.org/schema/mule/compression http://www.mulesoft.org/schema/mule/compression/current/mule-compression.xsd
+              http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+              http://www.mulesoft.org/schema/mule/sockets http://www.mulesoft.org/schema/mule/sockets/current/mule-sockets.xsd
+              http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+
+    <http-policy:proxy name="{{{policyId}}}-custom-policy">
+        <http-policy:source propagateMessageTransformations="true">
+            <try>
+                <!-- Capture request details -->
+                <set-variable variableName="taRequestHost" value="#[attributes.headers.host default 'localhost']" />
+                <set-variable variableName="taRequestMethod" value="#[attributes.method default 'GET']" />
+                <set-variable variableName="taRequestTarget" value="#[attributes.rawRequestUri default '/']" />
+                <set-variable variableName="taRequestScheme" value="#[attributes.scheme default 'http']" />
+
+                <ee:transform>
+                    <ee:variables>
+                        <ee:set-variable variableName="taRequestStartMs"><![CDATA[%dw 2.0
+                            import * from dw::util::Timer
+                            output application/json
+                            ---
+                            floor(currentMilliseconds() / 1000)
+                        ]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+
+                <logger level="DEBUG" message="Request processing started" />
+
+                <!-- Capture request headers -->
+                <choice>
+                    <when expression="true">
+                        <foreach collection="#[message.attributes.headers]">
+                            <set-variable variableName="taRequestHeaders" value="#[vars.taRequestHeaders default {} ++ payload]" />
+                        </foreach>
+
+                        <ee:transform>
+                            <ee:variables>
+                                <ee:set-variable variableName="taRequestHeadersProcessed"><![CDATA[%dw 2.0
+                                    output application/json
+                                    var reqHeaders = vars.taRequestHeaders default {}
+                                    ---
+                                    (reqHeaders mapObject ((value, key, index) -> {
+                                        (key): if (value != null) (value) else ""
+                                    }))
+                                ]]></ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <logger level="INFO" message="Request Header capture disabled" />
+                    </otherwise>
+                </choice>
+
+                <!-- Capture request body if enabled -->
+                <choice>
+                    <when expression="true">
+                        <ee:transform>
+                            <ee:variables>
+                                <ee:set-variable variableName="taRequestBodyOrig"><![CDATA[%dw 2.0
+                                    output application/json
+                                    ---
+                                    payload.^raw as String
+                                ]]></ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <logger level="INFO" message="Request Body capture disabled" />
+                    </otherwise>
+                </choice>
+
+                <logger level="INFO" message="Request pre-processing completed" />
+
+                <http-policy:execute-next/>
+
+                <!-- Process Response Post request handling -->
+                <async>
+                    <try>
+                        <logger level="INFO" message="Response post-processing started" />
+
+                        <choice>
+                            <when expression="true">
+                                <!-- Capture response body -->
+                                <ee:transform>
+                                    <ee:variables>
+                                        <ee:set-variable variableName="taResponseBodyOrig"><![CDATA[%dw 2.0
+                                            output application/json
+                                            ---
+                                            payload.^raw as String
+                                        ]]></ee:set-variable>
+                                    </ee:variables>
+                                </ee:transform>
+                            </when>
+                        </choice>
+
+                        <!-- Create the final payload with the specified structure -->
+                        <ee:transform>
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+                                    output application/json
+                                    ---
+                                    {
+                                        batchData: [
+                                            {
+                                                path: vars.taRequestScheme ++ "://" ++ vars.taRequestHost ++ vars.taRequestTarget,
+                                                requestHeaders: write(vars.taRequestHeadersProcessed, "application/json") replace "\n" with "",
+                                                responseHeaders: write(message.attributes.headers, "application/json") replace "\n" with "",
+                                                method: vars.taRequestMethod,
+                                                requestPayload: vars.taRequestBodyOrig replace "\n" with "",
+                                                responsePayload: vars.taResponseBodyOrig replace "\n" with "",
+                                                ip: "0.0.0.0",
+                                                time: vars.taRequestStartMs,
+                                                statusCode: message.attributes.statusCode default 200,
+                                                "type": "HTTP/1.1",
+                                                status: "",
+                                                akto_account_id: "1000000",
+                                                akto_vxlan_id: "123",
+                                                is_pending: "false",
+                                                source: "MIRRORING"
+                                            }
+                                        ]
+                                    }
+                                ]]></ee:set-payload>
+                            </ee:message>
+                        </ee:transform>
+
+                        <set-variable variableName="batchData" value="#[payload]" />
+                        <logger level="INFO" message="batchData info: #[vars.batchData]" />
+
+
+                        <logger level="ERROR" message="Calling external service: {{ TA-REPORTING-ENDPOINT }}" />
+                        <logger level="ERROR" message="Request Headers: #[vars.taRequestHeadersProcessed]" />
+                        <logger level="ERROR" message="Request Payload: #[vars.taRequestBodyOrig]" />
+
+                        <!-- Send the captured data to the external endpoint via HTTP POST -->
+                        <http:request method="POST" url="{{ TA-REPORTING-ENDPOINT }}">
+                            <http:body><![CDATA[%dw 2.0
+                                output application/json
+                                ---
+                                vars.batchData
+                            ]]></http:body>
+                        </http:request>
+<!-- 
+                        <logger level="INFO" message="Request sent to external endpoint successfully" />
+                        <logger level="INFO" message="Service call successful. Status: #[message.attributes.statusCode]" />
+                        <logger level="DEBUG" message="Service Response Headers: #[message.attributes.headers]" />
+                        <logger level="DEBUG" message="Service Response Body: #[payload]" /> -->
+
+                        <error-handler>
+                            <on-error-continue>
+                                <logger level="ERROR" message="error in processing: #[error]" />
+                                <logger level="ERROR" message="Request Headers: #[vars.taRequestHeadersProcessed]" />
+                                <logger level="ERROR" message="Request Payload: #[vars.taRequestBodyOrig]" />
+                            </on-error-continue>
+                        </error-handler>
+
+                    </try>
+
+                </async>
+
+            </try>
+
+           
+        </http-policy:source>
+    </http-policy:proxy>
+</mule>

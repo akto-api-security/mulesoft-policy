@@ -1,0 +1,25 @@
+{
+  "configs": [
+    "template.xml"
+  ],
+  "secureProperties": [],
+  "supportedJavaVersions": [],
+  "redeploymentEnabled": true,
+  "name": "77475ba0-4a44-48f7-ba5d-40cc5d6011eb:aktopolicy:1.20.10",
+  "minMuleVersion": "4.3.0",
+  "requiredProduct": "MULE_EE",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {}
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {
+      "groupId": "77475ba0-4a44-48f7-ba5d-40cc5d6011eb",
+      "classifier": "mule-policy",
+      "artifactId": "aktopolicy",
+      "type": "jar",
+      "version": "1.20.10"
+    }
+  }
+}

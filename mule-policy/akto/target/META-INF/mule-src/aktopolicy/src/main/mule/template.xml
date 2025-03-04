@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:compression="http://www.mulesoft.org/schema/mule/compression"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:http-policy="http://www.mulesoft.org/schema/mule/http-policy"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:sockets="http://www.mulesoft.org/schema/mule/sockets"
+      xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+              http://www.mulesoft.org/schema/mule/http-policy http://www.mulesoft.org/schema/mule/http-policy/current/mule-http-policy.xsd
+              http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+              http://www.mulesoft.org/schema/mule/compression http://www.mulesoft.org/schema/mule/compression/current/mule-compression.xsd
+              http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+              http://www.mulesoft.org/schema/mule/sockets http://www.mulesoft.org/schema/mule/sockets/current/mule-sockets.xsd
+              http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+
+    <http-policy:proxy name="{{{policyId}}}-custom-policy">
+        <http-policy:source propagateMessageTransformations="true">
+            <try>
+                <set-variable variableName="reqHost" value="#[attributes.headers.host default 'localhost']" />
+                <set-variable variableName="reqMethod" value="#[attributes.method default 'GET']" />
+                <set-variable variableName="reqTarget" value="#[attributes.rawRequestUri default '/']" />
+                <set-variable variableName="reqScheme" value="#[attributes.scheme default 'http']" />
+                <set-variable variableName="requestHeadersToSend" value="#[output application/json --- {'Content-Type': 'application/json'}]" />
+
+                <ee:transform>
+                    <ee:variables>
+                        <ee:set-variable variableName="requestStartTs"><![CDATA[%dw 2.0
+                            import * from dw::util::Timer
+                            output application/json
+                            ---
+                            floor(currentMilliseconds() / 1000)
+                        ]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+
+                <logger level="DEBUG" message="Request processing started" />
+
+                <choice>
+                    <when expression="true">
+                        <foreach collection="#[message.attributes.headers]">
+                            <set-variable variableName="requestHeaders" value="#[vars.requestHeaders default {} ++ payload]" />
+                        </foreach>
+
+                        <ee:transform>
+                            <ee:variables>
+                                <ee:set-variable variableName="requestHeadersProcessed"><![CDATA[%dw 2.0
+                                    output application/json
+                                    var reqHeaders = vars.requestHeaders default {}
+                                    ---
+                                    (reqHeaders mapObject ((value, key, index) -> {
+                                        (key): if (value != null) (value) else ""
+                                    }))
+                                ]]></ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <logger level="INFO" message="Request Header capture disabled" />
+                    </otherwise>
+                </choice>
+
+                <choice>
+                    <when expression="true">
+                        <ee:transform>
+                            <ee:variables>
+                                <ee:set-variable variableName="requestBodyOrig"><![CDATA[%dw 2.0
+                                    output application/json
+                                    ---
+                                    payload.^raw as String
+                                ]]></ee:set-variable>
+                            </ee:variables>
+                        </ee:transform>
+                    </when>
+                    <otherwise>
+                        <logger level="INFO" message="Request Body capture disabled" />
+                    </otherwise>
+                </choice>
+
+                <logger level="INFO" message="Request pre-processing completed" />
+
+                <http-policy:execute-next/>
+
+                <async>
+                    <try>
+                        <logger level="INFO" message="Response post-processing started" />
+
+                        <choice>
+                            <when expression="true">
+                                <ee:transform>
+                                    <ee:variables>
+                                        <ee:set-variable variableName="responseBodyOrig"><![CDATA[%dw 2.0
+                                            output application/json
+                                            ---
+                                            payload.^raw as String
+                                        ]]></ee:set-variable>
+                                    </ee:variables>
+                                </ee:transform>
+                            </when>
+                        </choice>
+
+                        <ee:transform>
+                            <ee:message>
+                                <ee:set-payload><![CDATA[%dw 2.0
+                                    output application/json
+                                    ---
+                                    {
+                                        batchData: [
+                                            {
+                                                path: vars.reqScheme ++ "://" ++ vars.reqHost ++ vars.reqTarget,
+                                                requestHeaders: write(vars.requestHeadersProcessed, "application/json") replace "\n" with "",
+                                                responseHeaders: write(message.attributes.headers, "application/json") replace "\n" with "",
+                                                method: vars.reqMethod,
+                                                requestPayload: vars.requestBodyOrig replace "\n" with "",
+                                                responsePayload: vars.responseBodyOrig replace "\n" with "",
+                                                ip: "0.0.0.0",
+                                                time: vars.requestStartTs,
+                                                statusCode: message.attributes.statusCode default 200,
+                                                "type": "HTTP/1.1",
+                                                status: "",
+                                                akto_account_id: "1000000",
+                                                akto_vxlan_id: "123",
+                                                is_pending: "false",
+                                                source: "MIRRORING"
+                                            }
+                                        ]
+                                    }
+                                ]]></ee:set-payload>
+                            </ee:message>
+                        </ee:transform>
+
+                        <set-variable variableName="batchData" value="#[payload]" />
+                        <logger level="INFO" message="batchData info: #[vars.batchData]" />
+
+
+                        <logger level="ERROR" message="Calling external service: {{ DATA-INGESTION-ENDPOINT }}" />
+                        <logger level="ERROR" message="Request Headers: #[vars.requestHeadersProcessed]" />
+                        <logger level="ERROR" message="Request Payload: #[vars.requestBodyOrig]" />
+
+                        <http:request method="POST" url="{{ DATA-INGESTION-ENDPOINT }}">
+                            <http:body>#[vars.batchData]</http:body>
+                            <http:headers><![CDATA[#[{'Content-Type': 'application/json'}]]]></http:headers>
+                        </http:request>
+
+                        <error-handler>
+                            <on-error-continue>
+                                <logger level="ERROR" message="error in processing: #[error]" />
+                                <logger level="ERROR" message="Request Headers: #[vars.requestHeadersProcessed]" />
+                                <logger level="ERROR" message="Request Payload: #[vars.requestBodyOrig]" />
+                            </on-error-continue>
+                        </error-handler>
+
+                    </try>
+
+                </async>
+
+            </try>
+
+           
+        </http-policy:source>
+    </http-policy:proxy>
+</mule>

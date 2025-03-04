@@ -1,0 +1,19 @@
+id: Akto
+name: Akto
+description: Akto Traffic Mirroring Policy
+category: Custom
+type: custom
+resourceLevelSupported: true
+encryptionSupported: false
+standalone: true
+supportedJavaVersions: ["8", "11", "17"]
+requiresConnectivity: true
+requiredCharacteristics: []
+providedCharacteristics: []
+configuration:
+  - propertyName: DATA-INGESTION-ENDPOINT
+    name: DATA INGESTION ENDPOINT
+    description: DATA INGESTION endpoint for TA
+    type: string
+    optional: false
+    defaultValue: ""
