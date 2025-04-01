@@ -110,7 +110,7 @@
                                     {
                                         batchData: [
                                             {
-                                                path: vars.reqScheme ++ "://" ++ vars.reqHost ++ vars.reqTarget,
+                                                path: vars.reqTarget,
                                                 requestHeaders: write(vars.requestHeadersProcessed, "application/json") replace "\n" with "",
                                                 responseHeaders: write(message.attributes.headers, "application/json") replace "\n" with "",
                                                 method: vars.reqMethod,
